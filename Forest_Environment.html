@@ -1,0 +1,325 @@
+//Final
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Deforested Forest with Growable Saplings</title>
+  
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+  <script src="https://unpkg.com/aframe-super-hands/dist/aframe-super-hands.min.js"></script>
+</head>
+
+<body>
+  <a-scene background="color: #8b8b8b"
+           fog="type: linear; color: #8b8b8b; near: 6; far: 60"
+           loading-screen="enabled: false">
+    <a-sound
+      src="url(assets/Reforestation.mp3)"
+      autoplay="true"
+      loop="true"
+      positional="false"
+    ></a-sound>
+
+    <a-assets>
+      <a-asset-item id="deadTree1" src="models/dead_tree.glb"></a-asset-item>
+      <a-asset-item id="deadTree2" src="models/dead_tree2.glb"></a-asset-item>
+      <a-asset-item id="deadTree3" src="models/dead_tree3.glb"></a-asset-item>
+      <a-asset-item id="saplingModel" src="models/treesapling.glb"></a-asset-item>
+      <a-asset-item id="healthyTree" src="models/tree.glb"></a-asset-item>
+    </a-assets>
+
+    <a-entity light="type: ambient; intensity: 0.6; color: #666"></a-entity>
+    <a-entity light="type: directional; intensity: 0.9; color: #ffdcb0" position="-10 20 -10"></a-entity>
+
+    <a-sky id="sceneSky" color="#9e9ea0"></a-sky>
+    <a-plane id="groundPlane" rotation="-90 0 0" width="200" height="200" color="#6b4f3b"></a-plane>
+
+    <a-entity id="rig" position="0 1.6 4"
+              movement-controls="fly: false; speed: 0.2; gamepad: true; touchEnabled: true; constrainToNavMesh: false">
+      
+      <a-entity camera look-controls
+                cursor="rayOrigin: mouse;"
+                raycaster="objects: .clickable; far: 5;">
+      </a-entity>
+      
+      <a-entity id="leftHand" hand-controls="hand: left" laser-controls="hand: left"
+                raycaster="objects: .clickable; far: 30;"
+                cursor="fuse: false"
+                super-hands>
+        <!-- Visible debug ray: thin translucent box extending forward from controller -->
+        <a-box class="ray-viz" position="0 0 -15" width="0.02" height="0.02" depth="30" material="color:#ff4444; opacity:0.45; shader: flat"></a-box>
+      </a-entity>
+      <a-entity id="rightHand" hand-controls="hand: right" laser-controls="hand: right"
+                raycaster="objects: .clickable; far: 30;"
+                cursor="fuse: false"
+                super-hands>
+        <a-box class="ray-viz" position="0 0 -15" width="0.02" height="0.02" depth="30" material="color:#44ff44; opacity:0.45; shader: flat"></a-box>
+      </a-entity>
+
+      <a-entity id="ui3D" position="0 0.5 -1.5">
+        <a-plane width="0.8" height="0.5" color="#000000" opacity="0.6" radius="0.05"></a-plane>
+        
+        <!-- ✅ HOME button moved to top-left -->
+        <a-entity id="homeButton" class="clickable"
+                  geometry="primitive: box; width: 0.18; height: 0.08; depth: 0.03"
+                  material="color: #4A90E2; shader: flat"
+                  position="-0.35 0.2 0.03"
+                  text="value: HOME; align: center; color: #FFF; width: 1; zOffset: 0.03">
+        </a-entity>
+
+        <a-text value="🌱 Controls" position="0 0.18 0.01" align="center" color="#7cf57c" width="0.7" font="mozillavr"></a-text>
+        <a-text value="Move: W/A/S/D or VR Thumbstick" position="0 0.08 0.01" align="center" color="#ffffff" width="0.7" font="mozillavr"></a-text>
+        <a-text value="Look Around: Mouse or VR Headset" position="0 0.00 0.01" align="center" color="#ffffff" width="0.7" font="mozillavr"></a-text>
+        <a-text value="Water Saplings: Trigger / Click" position="0 -0.08 0.01" align="center" color="#ffffff" width="0.7" font="mozillavr"></a-text>
+
+        <a-plane id="progressBar3DBackground" width="0.6" height="0.05" position="0 -0.18 0.01" color="#ffffff" opacity="0.2" radius="0.025"></a-plane>
+        <a-plane id="progressBar3DFill" width="0" height="0.05" position="-0.3 -0.18 0.02" color="#4caf50" radius="0.025"></a-plane>
+
+        <a-text id="wateredCount3D" value="0/5" position="0 -0.28 0.01" align="center" color="#ffffff" width="0.7" font="mozillavr"></a-text>
+      </a-entity>
+
+      <a-entity id="afforestationMessage" position="0 0 -2" visible="false">
+        <a-plane id="messagePlane" width="1.5" height="0.5" color="#000" opacity="0.6" radius="0.1"></a-plane>
+        <a-text value="🌳 Planting a tree, plants hope. 🌍\nA GREENER tomorrow starts with a SINGLE tree!"
+                color="#ffffff" align="center" width="1.4" position="0 0 0.01"></a-text>
+      </a-entity>
+
+    </a-entity>
+
+    <a-entity id="forestContainer"></a-entity>
+    <a-entity id="saplingContainer"></a-entity>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const forest = document.getElementById("forestContainer");
+        const saplings = document.getElementById("saplingContainer");
+        const progressBar3D = document.getElementById("progressBar3DFill");
+        const wateredCount3D = document.getElementById("wateredCount3D");
+        const ui3D = document.getElementById("ui3D");
+        const sky = document.getElementById("sceneSky");
+        const ground = document.getElementById("groundPlane");
+        const message = document.getElementById("afforestationMessage");
+        const messagePlane = document.getElementById("messagePlane");
+
+        // === HOME BUTTON LOGIC ===
+        const homeButton = document.getElementById("homeButton");
+        homeButton.addEventListener("click", () => {
+          window.location.href = "index.html";
+        });
+        // =============================
+
+        let wateredCount = 0;
+        let forestTransformed = false;
+
+        function rand(min, max) { return Math.random() * (max - min) + min; }
+        const deadTreeModels = [
+          { id: "#deadTree1", scales: ["0.5 0.9 0.5", "0.55 1.0 0.55", "0.6 1.1 0.6"] },
+          { id: "#deadTree2", scales: ["0.3 0.5 0.3", "0.32 0.52 0.32", "0.35 0.55 0.35"] },
+          { id: "#deadTree3", scales: ["0.02 0.03 0.02", "0.025 0.035 0.025", "0.03 0.04 0.03"] }
+        ];
+        const usedPositions = [];
+        const minDistance = 6;
+        function isTooClose(x, z, positions, minDist) {
+          return positions.some(pos => Math.sqrt((pos.x-x)**2 + (pos.z-z)**2) < minDist);
+        }
+
+        // --- Dead trees ---
+        for (let i = 0; i < 12; i++) {
+          let x, z;
+          do { x = rand(-35, 35); z = rand(-35, 35); } while (isTooClose(x, z, usedPositions, minDistance));
+          usedPositions.push({ x, z });
+
+          const treeObj = deadTreeModels[Math.floor(Math.random() * deadTreeModels.length)];
+          const scale = treeObj.scales[Math.floor(Math.random() * treeObj.scales.length)];
+          const tree = document.createElement("a-entity");
+          tree.setAttribute("gltf-model", treeObj.id);
+          tree.setAttribute("position", `${x} 0 ${z}`);
+          tree.setAttribute("scale", scale);
+          tree.setAttribute("rotation", `0 ${rand(0,360)} 0`);
+          forest.appendChild(tree);
+        }
+
+        // --- Saplings ---
+        const saplingPositions = [];
+        for (let i = 0; i < 12; i++) {
+          let x, z;
+          do { x = rand(-25, 25); z = rand(-25, 25); } 
+          while (isTooClose(x, z, saplingPositions, 5) || isTooClose(x, z, usedPositions, 4));
+          saplingPositions.push({ x, z });
+
+          const sapling = document.createElement("a-entity");
+          sapling.setAttribute("class", "sapling");
+          sapling.setAttribute("position", `${x} 0 ${z}`);
+
+          const model = document.createElement("a-entity");
+          const randomScale = 0.008 * rand(0.8, 1.2);
+          model.setAttribute("gltf-model", "#saplingModel");
+          model.setAttribute("scale", `${randomScale} ${randomScale*0.6} ${randomScale}`);
+          model.setAttribute("rotation", `0 ${rand(0,360)} 0`);
+          sapling.appendChild(model);
+
+          const clickBox = document.createElement("a-box");
+          clickBox.setAttribute("class", "clickable"); 
+          clickBox.setAttribute("width", 0.5);
+          clickBox.setAttribute("height", 1.0);
+          clickBox.setAttribute("depth", 0.5);
+          // Position the invisible hitbox so its top sits near the sapling model's head
+          clickBox.setAttribute("position", "0 0.5 0");
+          clickBox.setAttribute("material", "opacity:0; transparent:true");
+          sapling.appendChild(clickBox);
+
+          clickBox.addEventListener("click", (evt) => {
+            evt.stopPropagation();
+            createWateringEffect(sapling);
+            setTimeout(() => {
+              growIntoTree(sapling);
+              updateProgress();
+            }, 1000);
+          });
+          saplings.appendChild(sapling);
+        }
+
+        function createWateringEffect(sapling) {
+          for (let i = 0; i < 15; i++) {
+            const particle = document.createElement("a-sphere");
+            particle.setAttribute("radius", 0.08);
+            particle.setAttribute("material", "color:#00bfff; opacity:0.9; transparent:true");
+            const offsetX = rand(-0.4,0.4), offsetZ = rand(-0.4,0.4), startY = rand(1.2,1.8);
+            particle.setAttribute("position", `${offsetX} ${startY} ${offsetZ}`);
+            particle.setAttribute("animation__fall", `property: position; to: ${offsetX} 0 ${offsetZ}; dur: 800; easing: easeInQuad`);
+            sapling.appendChild(particle);
+            setTimeout(() => particle.remove(), 1000);
+          }
+        }
+
+        function growIntoTree(sapling) {
+          if (sapling.getAttribute("grown")) return;
+          sapling.setAttribute("grown", true);
+
+          const sapPos = new THREE.Vector3();
+          sapling.object3D.getWorldPosition(sapPos);
+          sapling.remove();
+
+          const tree = document.createElement("a-entity");
+          tree.setAttribute("gltf-model", "#healthyTree");
+          tree.setAttribute("position", `${sapPos.x} ${sapPos.y} ${sapPos.z}`);
+          const treeScale = `${(Math.random()*0.5+1.2)*15} ${(Math.random()*0.6+2.0)*12} ${(Math.random()*0.5+1.2)*15}`;
+          tree.setAttribute("scale", "0.01 0.01 0.01");
+          tree.setAttribute("animation__grow", `property: scale; from: 0.01 0.01 0.01; to: ${treeScale}; dur: 2000; easing: easeOutElastic`);
+          forest.appendChild(tree);
+        }
+
+        function updateProgress() {
+          wateredCount++;
+          if (wateredCount > 5) wateredCount = 5;
+
+          const progress = wateredCount / 5;
+          progressBar3D.setAttribute("width", 0.6 * progress);
+          progressBar3D.setAttribute("position", `${-0.3 + 0.3 * progress} -0.18 0.02`);
+          wateredCount3D.setAttribute("value", `${wateredCount}/5`);
+
+          if (wateredCount === 5 && !forestTransformed) {
+            forestTransformed = true;
+            setTimeout(() => transformToGreenForest(), 1000);
+          }
+        }
+
+        function transformToGreenForest() {
+          sky.setAttribute("color", "#87CEEB");
+          ground.setAttribute("color", "#2e8b57");
+          forest.innerHTML = "";
+          saplings.innerHTML = "";
+
+          // Hide info panel
+          ui3D.setAttribute("visible", "false");
+
+          for (let i = 0; i < 40; i++) {
+            const x = rand(-40, 40), z = rand(-40, 40);
+            const tree = document.createElement("a-entity");
+            tree.setAttribute("gltf-model", "#healthyTree");
+            const s = rand(10, 18);
+            tree.setAttribute("scale", `${s} ${s} ${s}`);
+            tree.setAttribute("position", `${x} 0 ${z}`);
+            tree.setAttribute("rotation", `0 ${rand(0,360)} 0`);
+            forest.appendChild(tree);
+          }
+
+          // Show 3D afforestation message
+          message.setAttribute("visible", "true");
+          messagePlane.setAttribute("opacity", 0);
+          messagePlane.setAttribute("animation", "property: opacity; from: 0; to: 0.6; dur: 2000; easing: easeInQuad");
+        }
+
+      });
+    </script>
+
+  </a-scene>
+    <script>
+      // Explicit raycast fallback: when controller trigger is pressed, perform a THREE.Raycaster
+      // from the controller and dispatch a click event on the nearest `.clickable` element.
+      (function () {
+        AFRAME.registerComponent('explicit-raycast-on-trigger', {
+          init: function () {
+            const sceneEl = this.el;
+            const DEBUG = true; // set to false to disable debug logs/markers
+            sceneEl.addEventListener('loaded', () => {
+              const controllers = sceneEl.querySelectorAll('[laser-controls], [hand-controls]');
+              controllers.forEach(ctrl => {
+                ctrl.addEventListener('triggerdown', () => {
+                  if (DEBUG) console.log('[explicit-raycast] triggerdown from', ctrl.id || ctrl);
+                  const clickableEls = Array.from(sceneEl.querySelectorAll('.clickable'));
+                  if (!clickableEls.length) {
+                    if (DEBUG) console.log('[explicit-raycast] no .clickable elements');
+                    return;
+                  }
+                  const objects = clickableEls.map(el => el.object3D).filter(Boolean);
+
+                  const origin = new THREE.Vector3();
+                  const dir = new THREE.Vector3(0, 0, -1);
+                  const quat = new THREE.Quaternion();
+                  ctrl.object3D.getWorldPosition(origin);
+                  ctrl.object3D.getWorldQuaternion(quat);
+                  dir.applyQuaternion(quat).normalize();
+
+                  if (DEBUG) console.log('[explicit-raycast] origin', origin.toArray(), 'dir', dir.toArray());
+
+                  const ray = new THREE.Raycaster(origin, dir);
+                  const intersects = ray.intersectObjects(objects, true);
+                  if (intersects.length === 0) {
+                    if (DEBUG) console.log('[explicit-raycast] no intersections');
+                    return;
+                  }
+
+                  const hit = intersects[0];
+                  if (DEBUG) console.log('[explicit-raycast] hit', hit);
+
+                  // Create a small debug marker at the intersection point
+                  if (DEBUG) {
+                    const marker = document.createElement('a-sphere');
+                    marker.setAttribute('color', '#ff0000');
+                    marker.setAttribute('radius', '0.05');
+                    marker.setAttribute('position', `${hit.point.x} ${hit.point.y} ${hit.point.z}`);
+                    marker.setAttribute('material', 'shader: flat; opacity: 0.9');
+                    sceneEl.appendChild(marker);
+                    setTimeout(() => marker.remove(), 1000);
+                  }
+
+                  let el = hit.object.el;
+                  while (el && !el.classList.contains('clickable')) el = el.parentNode;
+                  if (el) {
+                    if (DEBUG) console.log('[explicit-raycast] dispatching click to', el);
+                    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+                  }
+                });
+              });
+            });
+          }
+        });
+
+        // Attach to all scenes on the page
+        document.querySelectorAll('a-scene').forEach(s => s.setAttribute('explicit-raycast-on-trigger', ''));
+      })();
+    </script>
+</body>
+</html>
